@@ -1,45 +1,53 @@
-# FlyFi 
- 
+# FlyFi
+
+![GitHub last commit](https://img.shields.io/github/last-commit/M1txY/FlyFi)
+![GitHub code size in bytes](https://img.shields.io/github/languages/code-size/M1txY/FlyFi)
+![GitHub contributors](https://img.shields.io/github/contributors/M1txY/FlyFi)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 ## Description
 
-le projet FlyFi est un projet qui a pour but de permettre de se connecter en Bluetooth a l'écran de l'avion au port jack pour utiliser notre propre casque bluetooth.
+FlyFi est un projet qui permet aux passagers d'avion d'utiliser leur propre casque Bluetooth en se connectant sans fil à l'écran de l'avion via un port jack. Ce dispositif assure une meilleure qualité de son et une hygiène accrue en évitant l'utilisation des casques fournis.
 
 ## Matériel nécessaire
 
-1. **ESP32** : Ce microcontrôleur est assez puissant pour gérer la communication Bluetooth et le traitement du signal audio. [ESP32](https://fr.aliexpress.com/w/wholesale-esp32.html)
-2. **Module convertisseur DAC (Digital to Analog Converter)** : Pour convertir le signal numérique provenant de l'ESP32 en un signal analogique que l'on peut envoyer à un casque.
-3. **Module ADC (Analog to Digital Converter)** : Pour convertir le signal analogique du port jack en un signal numérique que l'ESP32 peut traiter. [ADC](https://fr.aliexpress.com/w/wholesale-adc.html)
-4. **Câble jack 3,5 mm** : Pour se connecter à la sortie audio de l'écran.
-5. **Batterie ou source d’alimentation** : Pour alimenter l'ESP32 et les modules ADC/DAC.
-6. **Ecran LCD** : Pour afficher les informations de connexion et de déconnexion.
-
+- **ESP32**: Microcontrôleur robuste pour gérer la communication Bluetooth et le traitement audio.
+- **Module convertisseur DAC**: Convertit les signaux numériques de l'ESP32 en analogique.
+- **Module ADC**: Convertit les signaux analogiques du jack en numérique pour l'ESP32.
+- **Câble jack 3,5 mm**: Pour la connexion au système audio de l'avion.
+- **Batterie ou source d'alimentation**: Alimente le dispositif.
+- **Écran LCD QAPASS**: Affiche les informations de connexion.
+- **Boutons**: Pour l'appairage et la gestion de la connexion Bluetooth.
 
 ## Schéma de montage
 
-1. **ESP32 à Module ADC** :
-   - **Broches de données** : Connectez les broches SDA (Data) et SCL (Clock) de l'ESP32 aux broches correspondantes de l'ADC si vous utilisez une communication I2C. Si votre ADC utilise SPI, connectez les broches MOSI, MISO et SCK de l'ESP32 aux broches correspondantes de l'ADC.
-   - **Alimentation** : Connectez VCC de l'ADC à une broche 3.3V ou 5V de l'ESP32 (selon la spécification de votre ADC), et GND à GND.
+![Schéma](link-to-schematic-image)
 
-2. **ESP32 à Module DAC** :
-   - **Broches de données** : De manière similaire à l'ADC, si le DAC utilise I2C, connectez SDA et SCL de l'ESP32 aux broches correspondantes du DAC. Pour SPI, connectez les broches MOSI, MISO et SCK.
-   - **Alimentation** : Connectez VCC du DAC à une broche 3.3V ou 5V de l'ESP32, et GND à GND.
+### Instructions de montage
 
-3. **Module ADC à Port Jack** :
-   - Connectez la sortie (L et R pour stéréo, sinon juste L pour mono) du port jack à l'entrée correspondante sur l'ADC. Assurez-vous également de connecter les masses.
+1. **ESP32 à Module ADC**:
+   - **Données**: Connectez SDA, SCL pour I2C ou MOSI, MISO, SCK pour SPI.
+   - **Alimentation**: VCC à 3.3V ou 5V, GND à GND.
 
-4. **Module DAC à Bluetooth (sortie audio)** :
-   - Connectez la sortie du DAC à un émetteur Bluetooth ou à un circuit d'amplification si nécessaire avant de le transmettre au casque Bluetooth.
+2. **ESP32 à Module DAC**:
+   - Répétez les connexions de données et d'alimentation comme pour l'ADC.
 
-5. **ESP32 à Écran LCD** :
-   - Si vous utilisez un écran LCD avec une interface I2C, connectez les broches SDA et SCL de l'ESP32 aux broches correspondantes de l'écran LCD.
-   - Pour les connexions GPIO (pour les écrans non-I2C), connectez les broches GPIO de l'ESP32 aux broches de données de l'écran LCD selon votre bibliothèque ou pilote d'écran spécifique.
-   - **Alimentation** : Connectez VCC de l'écran à une broche 3.3V ou 5V de l'ESP32, et GND à GND.
+3. **Module ADC à Port Jack**:
+   - Connectez les sorties audio (L, R) au port jack.
 
-## Code
- 
+4. **Module DAC à Bluetooth**:
+   - La sortie audio du DAC va à l'émetteur Bluetooth.
+
+5. **ESP32 à Écran LCD et Boutons**:
+   - Pour l'I2C, connectez SDA et SCL; pour les GPIO, utilisez les connexions appropriées.
+
+
+# Code
 ```c
 #include "BluetoothSerial.h"
 #include "driver/i2s.h"
+#include "Wire.h"
+#include "LiquidCrystal_I2C.h"  // Assurez-vous d'installer cette bibliothèque pour votre écran LCD
 
 // Vérifiez si Bluetooth est disponible sur le module
 #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
@@ -47,27 +55,42 @@ le projet FlyFi est un projet qui a pour but de permettre de se connecter en Blu
 #endif
 
 BluetoothSerial SerialBT;
+LiquidCrystal_I2C lcd(0x27, 16, 2); // Adresse I2C et dimensions de l'écran (modifiez si nécessaire)
 
 #define I2S_NUM         (0) // Numéro de I2S utilisé
 #define SAMPLE_RATE     (44100)
 #define SAMPLE_BITS     (16)
 #define CHANNEL_NUM     (2)
 
+// Pins pour les boutons
+#define BUTTON_PAIR_PIN 32
+#define BUTTON_CONNECT_PIN 33
+
 void setup() {
   Serial.begin(115200);
+  pinMode(BUTTON_PAIR_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_CONNECT_PIN, INPUT_PULLUP);
+
+  // Initialisation de l'écran LCD
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print("Initializing...");
 
   // Initialisation du Bluetooth
   SerialBT.begin("FlyFi Audio System"); // Nom du Bluetooth
   Serial.println("Bluetooth device is ready to pair");
+  lcd.setCursor(0, 1);
+  lcd.print("BT Ready");
 
   // Configuration de I2S pour l'ADC
   i2s_config_t i2s_config = {
       .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX | I2S_MODE_TX),
       .sample_rate = SAMPLE_RATE,
-      .bits_per_sample = (i2s_bits_per_sample_t)SAMPLE_BITS,
-      .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT, // stéréo
-      .communication_format = I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_MSB,
-      .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1, // Interruption de priorité haute
+      .bits_per_sample = SAMPLE_BITS,
+      .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
+      .communication_format = I2S_COMM_FORMAT_I2S_MSB,
+      .intr_alloc_flags = 0, // Default interrupt priority
       .dma_buf_count = 8,
       .dma_buf_len = 64,
       .use_apll = false,
@@ -76,27 +99,40 @@ void setup() {
   };
 
   i2s_pin_config_t pin_config = {
-      .bck_io_num = 26,  // BCLK
-      .ws_io_num = 25,   // LRCLK
-      .data_out_num = 22,// DIN
-      .data_in_num = 23  // DOUT
+      .bck_io_num = 26,
+      .ws_io_num = 25,
+      .data_out_num = 22,
+      .data_in_num = 23
   };
 
-  // Installation du pilote I2S
   i2s_driver_install(I2S_NUM, &i2s_config, 0, NULL);
   i2s_set_pin(I2S_NUM, &pin_config);
 }
 
 void loop() {
-  // Buffer pour stocker les données audio
+  static bool isPaired = false;
+  static bool isConnected = false;
+
+  // Gestion des boutons
+  if (digitalRead(BUTTON_PAIR_PIN) == LOW) {
+    isPaired = !isPaired;  // Simuler un basculement de l'état de pairage
+    lcd.setCursor(0, 0);
+    lcd.print(isPaired ? "Paired      " : "Unpaired    ");
+  }
+
+  if (digitalRead(BUTTON_CONNECT_PIN) == LOW) {
+    isConnected = !isConnected;  // Simuler un basculement de l'état de connexion
+    lcd.setCursor(0, 1);
+    lcd.print(isConnected ? "Connected   " : "Disconnected");
+  }
+
+  // Simulation de la lecture et de l'envoi des données audio
   uint8_t data[512];
   size_t bytes_read;
 
-  // Lire les données audio de l'ADC via I2S
   i2s_read(I2S_NUM, &data, sizeof(data), &bytes_read, portMAX_DELAY);
-  
-  // Envoyer les données audio au Bluetooth
-  if (bytes_read > 0) {
+
+  if (bytes_read > 0 && isConnected) {
     SerialBT.write(data, bytes_read);
   }
 }
